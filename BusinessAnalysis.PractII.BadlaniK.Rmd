@@ -1,6 +1,6 @@
 ---
 title: "Analysis of Film and Music Sales for Media Distributors, Inc."
-subtitle: "Prepared by Oaklnad Partners"
+subtitle: "Prepared by Oakland Partners"
 author: "Karan Badlani"
 date: "Spring 2025"
 output:

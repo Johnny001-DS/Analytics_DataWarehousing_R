@@ -1,4 +1,5 @@
 # Part A
+# Author: Karan Badlani
 # Program - SandBox Script to test connection with the Instance on AWS
 
 # Install required packages (run below if not installed)
