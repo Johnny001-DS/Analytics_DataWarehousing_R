@@ -1,0 +1,24 @@
+# Program - SandBox Script to test connection with the Instance on AWS
+
+# Install required packages (run below if not installed)
+#install.packages("DBI")
+#install.packages("RMySQL")
+
+# Load Libraries
+library(DBI)
+library(RMySQL)
+
+# Connect to AWS RDS MySQL Database
+conn <- dbConnect(RMySQL::MySQL(),
+                  dbname = "mysql", # default db initially
+                  host = "restaurant-db.c2lek0cq872j.us-east-1.rds.amazonaws.com", # from AWS RDS console
+                  port = 3306,
+                  user = "admin",
+                  password = "admin999")
+cat("Connected to database successfully.\n")
+
+# Check connection
+dbGetQuery(conn, "SHOW DATABASES;")
+
+# Disconnect
+dbDisconnect(conn)

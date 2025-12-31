@@ -1,0 +1,237 @@
+# Part C
+# Author: Karan Badlani
+# Semester: Spring 2025
+# Description: Extracts data from SQLite film/music sales, transforms it, and loads facts/dimensions into MySQL star schema.
+
+
+# Install and Load necessary Libraries
+packages <- c("DBI", "RMySQL", "RSQLite", "lubridate")
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) install.packages(pkg)
+}
+library(DBI)
+library(RMySQL)
+library(RSQLite)
+library(lubridate)
+
+
+# Setting up DB Connections
+
+# Connect to MySQL Analytics DBs
+film_con <- dbConnect(SQLite(), "film-sales.db")
+music_con <- dbConnect(SQLite(), "music-sales.db")
+
+# Connecting to the 'media_analytics' DB
+con <- dbConnect(RMySQL::MySQL(),
+                 dbname = "media_analytics",
+                 host = "cs5200-practicumii.c2lek0cq872j.us-east-1.rds.amazonaws.com",
+                 port = 3306,
+                 user = "admin",
+                 password = "admin999")
+cat("Connected to database successfully.\n")
+
+
+dbListTables(film_con)
+dbListTables(music_con)
+
+
+# Loading Distinct Date and Country Values
+
+# Extract distinct dates and countries from both DBs
+# film_dates <- dbGetQuery(film_con, "SELECT DISTINCT date(sale_date) AS sale_date FROM sales")
+# music_dates <- dbGetQuery(music_con, "SELECT DISTINCT date(sale_date) AS sale_date FROM sales")
+
+film_dates <- dbGetQuery(film_con, "
+  SELECT DISTINCT date(r.rental_date) AS sale_date
+  FROM rental r
+  JOIN payment p ON r.rental_id = p.rental_id
+")
+
+dbListFields(music_con, "invoices")
+
+music_dates <- dbGetQuery(music_con, "
+  SELECT DISTINCT date(i.InvoiceDate) AS sale_date
+  FROM invoices i
+  JOIN invoice_items ii ON i.InvoiceId = ii.InvoiceId
+")
+
+
+# Combine and transform dates
+all_dates <- unique(rbind(film_dates, music_dates))
+all_dates$sale_date <- as.Date(all_dates$sale_date)
+all_dates$month <- month(all_dates$sale_date)
+all_dates$quarter <- quarter(all_dates$sale_date)
+all_dates$year <- year(all_dates$sale_date)
+
+
+# Insert into dim_date
+if (!dbIsValid(con)) {
+  con <- dbConnect(RMySQL::MySQL(),
+                   dbname = "media_analytics",
+                   host = "cs5200-practicumii.c2lek0cq872j.us-east-1.rds.amazonaws.com",
+                   port = 3306,
+                   user = "admin",
+                   password = "admin999")
+}
+
+batch_size <- 50
+n <- nrow(all_dates)
+
+for (i in seq(1, n, by = batch_size)) {
+  chunk <- all_dates[i:min(i + batch_size - 1, n), ]
+  
+  values <- apply(chunk, 1, function(row) {
+    paste0("('", row["sale_date"], "', ", row["month"], ", ", row["quarter"], ", ", row["year"], ")")
+  })
+  
+  sql <- paste0(
+    "INSERT IGNORE INTO dim_date (date_id, month, quarter, year) VALUES ",
+    paste(values, collapse = ", ")
+  )
+  
+  dbExecute(con, sql)
+}
+
+
+# Loading Country Dimension
+# film_countries <- dbGetQuery(film_con, "SELECT DISTINCT country FROM customers")
+# music_countries <- dbGetQuery(music_con, "SELECT DISTINCT country FROM customers")
+# all_countries <- unique(rbind(film_countries, music_countries))
+
+film_countries <- dbGetQuery(film_con, "
+  SELECT DISTINCT co.country 
+  FROM customer c
+  JOIN address a ON c.address_id = a.address_id
+  JOIN city ci ON a.city_id = ci.city_id
+  JOIN country co ON ci.country_id = co.country_id
+")
+
+music_countries <- dbGetQuery(music_con, "
+  SELECT DISTINCT Country AS country FROM customers
+")
+
+all_countries <- unique(rbind(film_countries, music_countries))
+
+# Batch insert into dim_country
+for (i in seq(1, nrow(all_countries), by = 50)) {
+  chunk <- all_countries[i:min(i+49, nrow(all_countries)), , drop = FALSE]
+  values <- apply(chunk, 1, function(row) paste0("('", row["country"], "')"))
+  
+  sql <- paste0("INSERT IGNORE INTO dim_country (country_name) VALUES ", paste(values, collapse = ", "))
+  dbExecute(con, sql)
+}
+
+------------------------------------------------------------------------------------------------------------------------------
+  
+# Load Media Type Dimension
+media_types <- c("film", "music")
+for (type in media_types) {
+  dbExecute(con, paste0(
+    "INSERT IGNORE INTO dim_type (media_type) VALUES ('", type, "')"
+  ))
+}
+
+# Helper functions to get foreign keys
+get_country_id <- function(country_name) {
+  q <- paste0("SELECT country_id FROM dim_country WHERE country_name = '", country_name, "'")
+  result <- dbGetQuery(con, q)
+  if (nrow(result) > 0) return(result$country_id[1]) else return(NA)
+}
+
+get_type_id <- function(media_type) {
+  q <- paste0("SELECT type_id FROM dim_type WHERE media_type = '", media_type, "'")
+  result <- dbGetQuery(con, q)
+  if (nrow(result) > 0) return(result$type_id[1]) else return(NA)
+}
+
+# ---- Film Facts ----
+film_query <- "
+  SELECT 
+    DATE(r.rental_date) AS sale_date,
+    co.country AS country,
+    COUNT(DISTINCT c.customer_id) AS customers,
+    SUM(p.amount) AS total_revenue,
+    AVG(p.amount) AS avg_revenue,
+    MIN(p.amount) AS min_revenue,
+    MAX(p.amount) AS max_revenue
+  FROM rental r
+  JOIN payment p ON r.rental_id = p.rental_id
+  JOIN customer c ON r.customer_id = c.customer_id
+  JOIN address a ON c.address_id = a.address_id
+  JOIN city ci ON a.city_id = ci.city_id
+  JOIN country co ON ci.country_id = co.country_id
+  GROUP BY DATE(r.rental_date), co.country
+"
+film_facts <- dbGetQuery(film_con, film_query)
+film_facts$media_type <- "film"
+film_facts$total_units <- film_facts$customers  # Assuming 1 unit per rental
+film_facts$avg_units <- 1
+film_facts$min_units <- 1
+film_facts$max_units <- 1
+
+# ---- Music Facts ----
+music_query <- "
+  SELECT 
+    DATE(i.InvoiceDate) AS sale_date,
+    c.Country AS country,
+    COUNT(DISTINCT c.CustomerId) AS customers,
+    SUM(ii.Quantity) AS total_units,
+    AVG(ii.Quantity) AS avg_units,
+    MIN(ii.Quantity) AS min_units,
+    MAX(ii.Quantity) AS max_units,
+    SUM(ii.UnitPrice * ii.Quantity) AS total_revenue,
+    AVG(ii.UnitPrice * ii.Quantity) AS avg_revenue,
+    MIN(ii.UnitPrice * ii.Quantity) AS min_revenue,
+    MAX(ii.UnitPrice * ii.Quantity) AS max_revenue
+  FROM invoices i
+  JOIN customers c ON i.CustomerId = c.CustomerId
+  JOIN invoice_items ii ON i.InvoiceId = ii.InvoiceId
+  GROUP BY DATE(i.InvoiceDate), c.Country
+"
+music_facts <- dbGetQuery(music_con, music_query)
+music_facts$media_type <- "music"
+
+# ---- Combine and Insert ----
+common_cols <- c("sale_date", "country", "customers", "total_units", "avg_units",
+                 "min_units", "max_units", "total_revenue", "avg_revenue",
+                 "min_revenue", "max_revenue", "media_type")
+combined_facts <- rbind(
+  film_facts[, common_cols],
+  music_facts[, common_cols]
+)
+
+# Insert facts
+for (i in 1:nrow(combined_facts)) {
+  row <- combined_facts[i, ]
+  date_id <- as.character(row$sale_date)
+  country_id <- get_country_id(row$country)
+  type_id <- get_type_id(row$media_type)
+  
+  if (is.na(country_id) || is.na(type_id)) next  # skip if foreign keys not found
+  
+  insert_q <- paste0("
+    INSERT INTO fact_sales (
+      date_id, country_id, type_id,
+      total_units, avg_units, total_revenue, avg_revenue,
+      customer_count, min_units, max_units,
+      min_revenue, max_revenue
+    ) VALUES (
+      '", date_id, "',", country_id, ",", type_id, ",",
+                     row$total_units, ",", round(row$avg_units, 2), ",",
+                     round(row$total_revenue, 2), ",", round(row$avg_revenue, 2), ",",
+                     row$customers, ",", row$min_units, ",", row$max_units, ",",
+                     round(row$min_revenue, 2), ",", round(row$max_revenue, 2), "
+    )
+  ")
+  
+  dbExecute(con, insert_q)
+}
+
+# Validate
+result <- dbGetQuery(con, "SELECT * FROM fact_sales LIMIT 5")
+print(result)
+
+# Disconnect
+dbDisconnect(film_con)
+dbDisconnect(music_con)
+dbDisconnect(con)

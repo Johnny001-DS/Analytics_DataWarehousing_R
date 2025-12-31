@@ -1,0 +1,91 @@
+# Part B
+# Author: Prinkle Singharia
+# Semester: Spring 2025
+# Description: Script to create star schema tables in MySQL for Practicum II
+
+library(DBI)
+library(RMySQL)
+
+
+
+# Connecting to the 'media_analytics' DB to create our new DB
+con <- dbConnect(RMySQL::MySQL(),
+                  dbname = "media_analytics",
+                  host = "cs5200-practicumii.c2lek0cq872j.us-east-1.rds.amazonaws.com",
+                  port = 3306,
+                  user = "admin",
+                  password = "admin999")
+cat("Connected to database successfully.\n")
+
+
+
+# Drop tables if exist
+tables <- c("fact_sales", "dim_date", "dim_country", "dim_type")
+for (tbl in tables) {
+  dbExecute(con, paste0("DROP TABLE IF EXISTS ", tbl))
+}
+
+
+
+# Useing the newly created database schema
+# dbExecute(con, "USE `cs5200-practicumII`;")
+
+
+
+# create tables:
+
+# Dimension Table
+dbExecute(con, "
+  CREATE TABLE dim_date (
+    date_id DATE PRIMARY KEY,
+    month INT,
+    quarter INT,
+    year INT
+  )
+")
+
+dbExecute(con, "
+  CREATE TABLE dim_country (
+    country_id INT AUTO_INCREMENT PRIMARY KEY,
+    country_name VARCHAR(50) UNIQUE
+  )
+")
+
+dbExecute(con, "
+  CREATE TABLE dim_type (
+    type_id INT AUTO_INCREMENT PRIMARY KEY,
+    media_type VARCHAR(10) UNIQUE
+  )
+")
+
+# Fact Table
+dbExecute(con, "
+  CREATE TABLE fact_sales (
+    sale_id INT AUTO_INCREMENT PRIMARY KEY,
+    date_id DATE,
+    country_id INT,
+    type_id INT,
+    total_units INT,
+    avg_units DECIMAL(10,2),
+    total_revenue DECIMAL(10,2),
+    avg_revenue DECIMAL(10,2),
+    customer_count INT,
+    min_units INT,
+    max_units INT,
+    min_revenue DECIMAL(10,2),
+    max_revenue DECIMAL(10,2),
+    FOREIGN KEY (date_id) REFERENCES dim_date(date_id),
+    FOREIGN KEY (country_id) REFERENCES dim_country(country_id),
+    FOREIGN KEY (type_id) REFERENCES dim_type(type_id)
+  )
+")
+
+
+
+# Verify the tables were created
+print(dbListTables(con))
+
+
+
+# Disconnect from the database
+dbDisconnect(con)

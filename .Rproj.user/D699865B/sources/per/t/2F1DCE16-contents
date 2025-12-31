@@ -1,0 +1,176 @@
+---
+title: "Analysis of Film and Music Sales for Media Distributors, Inc."
+subtitle: "Prepared by Oaklnad Partners"
+author: "Prinkle Singharia"
+date: "Spring 2025"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: true
+    toc_depth: 2
+    number_sections: true
+    theme: paper
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(DBI)
+library(RMySQL)
+library(knitr)
+library(kableExtra)
+```
+
+## 1. Background
+
+data-driven decision-making is essential in the competitive world of film and music distribution. This report provides an analysis of the sales performance for Media Distributors, Inc. The information is drawn from an analytical datamart built on a star schema that integrates key data points from our film and music operational systems.
+
+## 2. Data Sources and Methodology
+
+data is extracted via SQL queries from systems. Aggregations are computed and stored to support drill-down and analytical queries. This approach ensures that the reported figures are always current.
+
+## 3. Analytical Findings
+
+key performance indicators generated from the analytical datamart.
+
+### 3.1 Yearly Revenue Analysis
+
+```{r yearly_revenue}
+con <- dbConnect(RMySQL::MySQL(),
+                 dbname = "media_analytics",
+                 host = "cs5200-practicumii.c2lek0cq872j.us-east-1.rds.amazonaws.com",
+                 port = 3306,
+                 user = "admin",
+                 password = "admin999")
+
+revenue_query <- "
+SELECT YEAR(date_id) AS year,
+       dt.media_type,
+       SUM(total_revenue) AS total_revenue,
+       ROUND(AVG(avg_revenue), 2) AS avg_revenue
+FROM fact_sales fs
+JOIN dim_type dt ON fs.type_id = dt.type_id
+GROUP BY YEAR(date_id), dt.media_type
+ORDER BY YEAR(date_id), dt.media_type;
+"
+
+yearly_revenue <- dbGetQuery(con, revenue_query)
+dbDisconnect(con)
+
+kable(yearly_revenue, caption = "Yearly Total and Average Revenue by Media Type") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```
+
+### 3.2 Top 10 Countries by Units Sold
+
+```{r top_unit}
+con_units <- dbConnect(RMySQL::MySQL(),
+                       dbname = "media_analytics",
+                       host = "cs5200-practicumii.c2lek0cq872j.us-east-1.rds.amazonaws.com",
+                       port = 3306,
+                       user = "admin",
+                       password = "admin999")
+
+units_query <- "
+SELECT dc.country_name,
+       dt.media_type,
+       SUM(total_units) AS total_units,
+       ROUND(AVG(avg_units), 2) AS avg_units
+FROM fact_sales fs
+JOIN dim_country dc ON fs.country_id = dc.country_id
+JOIN dim_type dt ON fs.type_id = dt.type_id
+GROUP BY dc.country_name, dt.media_type
+ORDER BY total_units DESC
+LIMIT 10;
+"
+top_units <- dbGetQuery(con_units, units_query)
+dbDisconnect(con_units)
+
+kable(top_units, caption = "Top 10 Countries by Units Sold") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```
+
+### 3.3 Top 10 Countries by Customer Count
+
+```{r top_custoemrs}
+con_customers <- dbConnect(RMySQL::MySQL(),
+                           dbname = "media_analytics",
+                           host = "cs5200-practicumii.c2lek0cq872j.us-east-1.rds.amazonaws.com",
+                           port = 3306,
+                           user = "admin",
+                           password = "admin999")
+
+customer_query <- "
+SELECT dc.country_name,
+       dt.media_type,
+       SUM(customer_count) AS total_customers
+FROM fact_sales fs
+JOIN dim_country dc ON fs.country_id = dc.country_id
+JOIN dim_type dt ON fs.type_id = dt.type_id
+GROUP BY dc.country_name, dt.media_type
+ORDER BY total_customers DESC
+LIMIT 10;
+"
+top_customers <- dbGetQuery(con_customers, customer_query)
+dbDisconnect(con_customers)
+
+kable(top_customers, caption = "Top 10 Countries by Customer Count") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```
+
+### 3.4 Revenue Summary by Year and Media Type
+
+```{r}
+con_rev_sum <- dbConnect(RMySQL::MySQL(),
+                         dbname = "media_analytics",
+                         host = "cs5200-practicumii.c2lek0cq872j.us-east-1.rds.amazonaws.com",
+                         port = 3306,
+                         user = "admin",
+                         password = "admin999")
+
+revenue_sum_query <- "
+SELECT YEAR(date_id) AS year,
+       dt.media_type,
+       ROUND(MIN(total_revenue), 2) AS min_revenue,
+       ROUND(MAX(total_revenue), 2) AS max_revenue,
+       ROUND(AVG(total_revenue), 2) AS avg_revenue
+FROM fact_sales fs
+JOIN dim_type dt ON fs.type_id = dt.type_id
+GROUP BY YEAR(date_id), dt.media_type
+ORDER BY year;
+"
+revenue_summary <- dbGetQuery(con_rev_sum, revenue_sum_query)
+dbDisconnect(con_rev_sum)
+
+kable(revenue_summary, caption = "Revenue Summary by Yaer and Media Type") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```
+
+### 3.5 Units Sold Summary by Year and Media Type
+
+```{r units-summary}
+con_units_sum <- dbConnect(RMySQL::MySQL(),
+                           dbname = "media_analytics",
+                           host = "cs5200-practicumii.c2lek0cq872j.us-east-1.rds.amazonaws.com",
+                           port = 3306,
+                           user = "admin",
+                           password = "admin999")
+
+units_sum_query <- "
+SELECT YEAR(date_id) AS year,
+       dt.media_type,
+       MIN(total_units) AS min_units,
+       MAX(total_units) AS max_units,
+       ROUND(AVG(total_units), 2) AS avg_units
+FROM fact_sales fs
+JOIN dim_type dt ON fs.type_id = dt.type_id
+GROUP BY YEAR(date_id), dt.media_type
+ORDER BY year;
+"
+units_summary <- dbGetQuery(con_units_sum, units_sum_query)
+dbDisconnect(con_units_sum)
+
+kable(units_summary, caption = "Units Sold Summary by Year and Media Type") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```

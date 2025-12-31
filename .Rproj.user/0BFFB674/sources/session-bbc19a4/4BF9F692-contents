@@ -1,0 +1,94 @@
+---
+title: "Part B - Normalized Database Schema Design"
+author: "Prinkle Singharia"
+date: "03/08/2025"
+output: pdf_document
+---
+
+# Part B: Normalized Database Design (3NF)
+
+## 1. Functional Dependencies
+
+The given CSV data includes attributes related to restaurants, servers, visits, and customers, the identified functional dependencies (FDs) are as follows:
+
+### Functional Dependencies:
+
+- VisitID uniquely determines all attributes related to a single visit:
+\[
+\text{VisitID} \rightarrow \{\text{Restaurant}, \text{ServerEmpID}, \text{CustomerEmail}, \text{VisitDate}, \text{VisitTime}, \text{MealType}, \text{PartySize}, \text{Genders}, \text{WaitTime}, \text{FoodBill}, \text{TipAmount}, \text{DiscountApplied}, \text{PaymentMethod}, \text{orderedAlcohol}, \text{AlcoholBill}\}
+\]
+
+- ServerEmpID uniquely determines server attributes:
+\[
+\text{ServerEmpID} \rightarrow \{\text{ServerName}, \text{ServerBirthDate}, \text{ServerTIN}, \text{HourlyRate}, \text{StartDateHired}, \text{EndDateHired}\}
+\]
+
+- CustomerEmail uniquely identifies a customer:
+\[
+\text{CustomerEmail} \rightarrow \{\text{CustomerName}, \text{CustomerPhone}, \text{LoyaltyMember}\}
+\]
+
+- RestaurantName uniquely identifies a Restaurant:
+\[
+\text{RestaurantName} \rightarrow \text{RestaurantID}
+\]
+
+---
+
+## 2. 3NF Normalization
+
+Applying the normalization rules, the dataset is decomposed clearly into these tables:
+
+### **Restaurant**  
+- RestaurantID (PK, INT)  
+- RestaurantName (VARCHAR(100))
+
+### **Server**  
+- ServerEmpID (PK, INT)  
+- ServerName (VARCHAR(100))  
+- ServerBirthDate (DATE)  
+- ServerTIN (VARCHAR(20))  
+- HourlyRate (DECIMAL(5,2))  
+- StartDateHired (DATE)  
+- EndDateHired (DATE)
+
+### **Customer**  
+- CustomerID (PK, INT, auto-generated)  
+- CustomerName (VARCHAR(100))  
+- CustomerPhone (VARCHAR(20))  
+- CustomerEmail (VARCHAR(100), UNIQUE)  
+- LoyaltyMember (BOOLEAN)
+
+### **Visit**  
+- VisitID (PK, INT)  
+- RestaurantID (FK → Restaurant, INT)  
+- ServerEmpID (FK → Server, INT, nullable)  
+- CustomerID (FK → Customer, INT, nullable)  
+- VisitDate (DATE)  
+- VisitTime (TIME)  
+- MealType (VARCHAR(50))  
+- PartySize (INT)  
+- Genders (VARCHAR(20))  
+- WaitTime (INT)  
+- FoodBill (DECIMAL(8,2))  
+- TipAmount (DECIMAL(6,2))  
+- DiscountApplied (DECIMAL(3,2))  
+- PaymentMethod (VARCHAR(50))  
+- orderedAlcohol (BOOLEAN)  
+- AlcoholBill (DECIMAL(6,2))
+
+Each table clearly meets the criteria for Third Normal Form (3NF):
+
+- Single primary key
+- All non-key attributes depend fully on the primary key
+- No transitive dependencies exist
+
+---
+
+## 3. ER Diagram (IE/Crow's Feet Notation)
+
+Below is the ERD in Crow's Feet notation, clearly showing entities, primary keys, foreign keys, data types, and relationships:
+
+
+```{r, echo=FALSE, out.width='100%'}
+knitr::include_graphics("ERD.png")

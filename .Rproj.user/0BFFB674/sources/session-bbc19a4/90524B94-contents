@@ -1,0 +1,129 @@
+---
+title: "Analysis of Film and Music Sales for Media Distributors, Inc."
+subtitle: "Prepared by Oakland Partners"
+author: "Prinkle Singharia"
+date: "Spring 2025"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: true
+    theme: paper
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(DBI)
+library(RMySQL)
+library(knitr)
+library(kableExtra)
+```
+
+# Database connection
+```{r db-connect}
+con <- dbConnect(RMySQL::MySQL(),
+                 dbname = "media_analytics",
+                 host = "cs5200-practicumii.c2lek0cq872j.us-east-1.rds.amazonaws.com",
+                 port = 3306,
+                 user = "admin",
+                 password = "admin999")
+cat("Connected to database successfully.\n")
+```
+
+# Yearly Revenue
+```{r revenue_by_year}
+query <- "
+SELECT year(date_id) AS year,
+       d.media_type,
+       SUM(f.total_revenue) AS total_revenue,
+       ROUND(AVG(f.avg_revenue), 2) AS avg_revenue
+FROM fact_sales f
+JOIN dim_type d ON f.type_id = d.type_id
+GROUP BY year, d.media_type
+ORDER BY year, d.media_type;
+"
+df <- dbGetQuery(con, query)
+kable(df, caption = 'Total and Average Revenue by Year and Type') %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+```
+
+# Top countries Units
+```{r top_countries_units}
+query <- "
+SELECT c.country_name,
+       d.media_type,
+       SUM(f.total_units) AS total_units,
+       ROUND(AVG(f.avg_units), 2) AS avg_units
+FROM fact_sales f
+JOIN dim_country c ON f.country_id = c.country_id
+JOIN dim_type d ON f.type_id = d.type_id
+GROUP BY c.country_name, d.media_type
+ORDER BY total_units DESC
+LIMIT 10;
+"
+df <- dbGetQuery(con, query)
+kable(df, caption = 'Top 10 Countries by Units Sold') %>%
+  kable_styling(full_width = FALSE)
+```
+
+# Top customers, country-wise
+```{r top_customers_by_country}
+query <- "
+SELECT c.country_name,
+       d.media_type,
+       SUM(f.customer_count) AS total_customers
+FROM fact_sales f
+JOIN dim_country c ON f.country_id = c.country_id
+JOIN dim_type d ON f.type_id = d.type_id
+GROUP BY c.country_name, d.media_type
+ORDER BY total_customers DESC
+LIMIT 10;
+"
+df <- dbGetQuery(con, query)
+kable(df, caption = 'Top 10 Countries by Number of Customers') %>%
+  kable_styling(full_width = FALSE)
+```
+
+# Summary of revenue
+```{r revenue_summary}
+query <- "
+SELECT year(date_id) AS year,
+       d.media_type,
+       ROUND(MIN(f.total_revenue), 2) AS min_revenue,
+       ROUND(MAX(f.total_revenue), 2) AS max_revenue,
+       ROUND(AVG(f.total_revenue), 2) AS avg_revenue
+FROM fact_sales f
+JOIN dim_type d ON f.type_id = d.type_id
+GROUP BY year, d.media_type
+ORDER BY year;
+"
+df <- dbGetQuery(con, query)
+kable(df, caption = 'Revenue Summary by Year and Media Type') %>%
+  kable_styling()
+```
+
+# Summary of units
+```{r units_summary}
+query <- "
+SELECT year(date_id) AS year,
+       d.media_type,
+       MIN(f.total_units) AS min_units,
+       MAX(f.total_units) AS max_units,
+       ROUND(AVG(f.total_units), 2) AS avg_units
+FROM fact_sales f
+JOIN dim_type d ON f.type_id = d.type_id
+GROUP BY year, d.media_type
+ORDER BY year;
+"
+df <- dbGetQuery(con, query)
+kable(df, caption = 'Units Sold Summary by Year and Media Type') %>%
+  kable_styling()
+```
+
+# Database Disconnect
+```{r disconnect, include=FALSE}
+dbDisconnect(con)
+cat("Disconnected from database.\n")
+```

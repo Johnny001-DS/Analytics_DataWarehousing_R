@@ -1,0 +1,113 @@
+---
+title: "Part G - Analyze Sales"
+subtitle: "CS5200 Practicum I"
+author: "Prinkle Singharia"
+date: "Spring 2025"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(DBI)
+library(RMySQL)
+library(kableExtra)
+```
+
+## Database Connection
+
+```{r db-connect}
+conn <- dbConnect(RMySQL::MySQL(),
+                  dbname = "restaurantDB",
+                  host = "restaurant-db.c2lek0cq872j.us-east-1.rds.amazonaws.com",
+                  port = 3306,
+                  user = "admin",
+                  password = "admin999")
+cat("Connected to database successfully.\n")
+```
+
+## Analysis by Restaurant
+
+```{sql analysis_restaurant, connection=conn}
+SELECT 
+    r.RestaurantName AS 'Restaurant',
+    COUNT(v.VisitID) AS 'Total Visits',
+    COUNT(DISTINCT v.CustomerID) AS 'Unique Customers',
+    SUM(CASE WHEN c.LoyaltyMember = 1 THEN 1 ELSE 0 END) AS 'Loyalty Customers',
+    ROUND(SUM(v.FoodBill + v.AlcoholBill), 2) AS 'Total Revenue (Excl. Tips)'
+FROM Visit v
+LEFT JOIN Restaurant r ON v.RestaurantID = r.RestaurantID
+LEFT JOIN Customer c ON v.CustomerID = c.CustomerID
+GROUP BY r.RestaurantName;
+```
+
+```{r display_analysis_restaurant, results='asis'}
+result_restaurant <- suppressWarnings(dbGetQuery(conn, "
+SELECT 
+    r.RestaurantName AS 'Restaurant',
+    COUNT(v.VisitID) AS 'Total Visits',
+    COUNT(DISTINCT v.CustomerID) AS 'Unique Customers',
+    SUM(CASE WHEN c.LoyaltyMember = 1 THEN 1 ELSE 0 END) AS 'Loyalty Customers',
+    ROUND(SUM(v.FoodBill + v.AlcoholBill), 2) AS 'Total Revenue (Excl. Tips)'
+FROM Visit v
+LEFT JOIN Restaurant r ON v.RestaurantID = r.RestaurantID
+LEFT JOIN Customer c ON v.CustomerID = c.CustomerID
+GROUP BY r.RestaurantName;
+"))
+
+#print(
+#  kable(result_restaurant, "latex", booktabs=TRUE, caption = "Analysis by Restaurant") %>%
+#  kable_styling(latex_options = c("striped", "hold_position"))
+#)
+
+```
+
+## Analysis by Year
+
+```{sql analysis_year, connection=conn}
+SELECT 
+    YEAR(VisitDate) AS Year,
+    ROUND(SUM(FoodBill + AlcoholBill), 2) AS 'Total Revenue',
+    ROUND(AVG((FoodBill + AlcoholBill) / PartySize), 2) AS 'Average per Party',
+    ROUND(AVG(PartySize), 2) AS 'Average Party Size'
+FROM Visit
+GROUP BY YEAR(VisitDate)
+ORDER BY Year;
+```
+
+```{r display_analysis_year, results='asis'}
+result_year <- dbGetQuery(conn, "
+SELECT 
+    YEAR(VisitDate) AS Year,
+    ROUND(SUM(FoodBill + AlcoholBill), 2) AS 'Total Revenue',
+    ROUND(AVG((FoodBill + AlcoholBill) / PartySize), 2) AS 'Average per Party',
+    ROUND(AVG(PartySize), 2) AS 'Average Party Size'
+FROM Visit
+GROUP BY YEAR(VisitDate)
+ORDER BY Year;
+")
+
+#result_year %>%
+#  kable("latex", booktabs=TRUE, caption = "Analysis by Year") %>%
+#  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+## Trend by Year
+
+```{r trend_plot}
+plot(result_year$Year, result_year$`Total Revenue`, type="b",
+     col="blue", pch=19, lwd=2,
+     xlab="Year",
+     ylab="Total Revenue",
+     main="Revenue Trend by Year")
+
+# Add data labels
+text(result_year$Year, result_year$`Total Revenue`,
+     labels=round(result_year$`Total Revenue`,2),
+     pos=3, cex=0.8, col="darkred")
+```
+
+## Close Database Connection
+
+```{r close-db, include=FALSE}
+dbDisconnect(conn)
+```
